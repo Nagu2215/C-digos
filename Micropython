@@ -1,0 +1,72 @@
+# Escribe tu código aquí :-)
+import network
+import time
+from machine import Pin, UART
+from dht import DHT11
+import urequests
+
+# Configuración de la conexión WiFi
+wifiSSID = "UnachWiFi"
+wifiPass = ""
+
+# Configuración de ThingSpeak
+thingspeak_api_key = "LVJHKYI5NFVGHB34"
+thingspeak_url = "https://api.thingspeak.com/update"
+
+# Configuración de los pines UART
+ESP32_TX2 = 17  # Pin TX de ESP32
+ESP32_RX2 = 16  # Pin RX de ESP32
+
+# Configuración del DHT11
+sensorDHT = DHT11(Pin(4))
+
+# Configurar UART para la comunicación entre ESP32 y Arduino Uno
+uart = UART(1, baudrate=9600, tx=Pin(ESP32_TX2), rx=Pin(ESP32_RX2))
+
+# Función para conectar a WiFi
+def connect_to_wifi():
+    print("Conectando a WiFi...")
+    miRed = network.WLAN(network.STA_IF)
+    if not miRed.isconnected():
+        miRed.active(True)
+        miRed.connect(wifiSSID, wifiPass)
+        while not miRed.isconnected():
+            pass
+    print("Conectado a WiFi:", miRed.ifconfig())
+    return miRed
+
+
+# Conectar a WiFi
+wifi_interface = connect_to_wifi()
+
+# Función para enviar datos a ThingSpeak
+def send_to_thingspeak(temperature, humidity):
+    data = "api_key={}&field1={:.2f}&field2={:.2f}".format(
+        thingspeak_api_key, temperature, humidity
+    )
+    response = urequests.post(thingspeak_url, data=data)
+    print("ThingSpeak response:", response.text)
+    response.close()
+
+
+while True:
+    # Medir temperatura y humedad
+    sensorDHT.measure()
+    temperature = sensorDHT.temperature()
+    humidity = sensorDHT.humidity()
+
+    # Verificar si la lectura es válida
+    if temperature is not None and humidity is not None:
+        print("Temperatura: {}°C, Humedad: {}%".format(temperature, humidity))
+
+        # Enviar datos a ThingSpeak
+        send_to_thingspeak(temperature, humidity)
+
+        # Construir el mensaje
+        message = ujson.dumps({"temperature": temperature, "humidity": humidity})
+
+        # Enviar datos al Arduino Uno sin codificar
+        uart.write(message)
+    else:
+        print("Error al leer el sensor DHT11")
+        time.sleep(60)  # Esperar 60 segundos antes de la siguiente lectura
